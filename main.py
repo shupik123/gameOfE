@@ -18,8 +18,6 @@ client.remove_command('help')
 
 games = {}
 
-spc = '      '
-
 class Game:
 	def __init__(self, message, channel: discord.TextChannel, starter: discord.User, count: int):
 		self.channel = channel
@@ -42,20 +40,22 @@ class Game:
 		}
 
 		# creating the string of emoji's
+		spc = '      '
 		lines = []
 
-		lines.append(f':blue_square:{spc}:regional_indicator_a::regional_indicator_b::regional_indicator_c::regional_indicator_d::regional_indicator_e:') # line 0
-		lines.append('') # line 1
-		lines.append(f':one:{spc}') # line 2
-		for i in range(1,6): lines[2] += colors[self.board[(i,1)]]
-		lines.append(f':two:{spc}') # line 3
-		for i in range(1,6): lines[3] += colors[self.board[(i,2)]]
-		lines.append(f':three:{spc}') # line 4
-		for i in range(1,6): lines[4] += colors[self.board[(i,3)]]
-		lines.append(f':four:{spc}') # line 5
-		for i in range(1,6): lines[5] += colors[self.board[(i,4)]]
-		lines.append(f':five:{spc}') # line 6
-		for i in range(1,6): lines[6] += colors[self.board[(i,5)]]
+		lines.append('It\'s {0.turn.name}\'s turn!'.format(self)) # line 0
+		lines.append(f':blue_square:{spc}:regional_indicator_a::regional_indicator_b::regional_indicator_c::regional_indicator_d::regional_indicator_e:') # line 1
+		lines.append('') # line 2
+		lines.append(f':one:{spc}') # line 3
+		for i in range(1,6): lines[3] += colors[self.board[(i,1)]]
+		lines.append(f':two:{spc}') # line 4
+		for i in range(1,6): lines[4] += colors[self.board[(i,2)]]
+		lines.append(f':three:{spc}') # line 5
+		for i in range(1,6): lines[5] += colors[self.board[(i,3)]]
+		lines.append(f':four:{spc}') # line 6
+		for i in range(1,6): lines[6] += colors[self.board[(i,4)]]
+		lines.append(f':five:{spc}') # line 7
+		for i in range(1,6): lines[7] += colors[self.board[(i,5)]]
 
 		# combining lines
 		lines_str = ''
@@ -72,7 +72,6 @@ async def on_ready():
 
 @client.command(pass_context = True)
 async def help(ctx):
-	if ctx.author.bot: return # bot check
 
 	embed=discord.Embed(color=0x62f3ff)
 	embed.add_field(name='!help', value='Sends this message.', inline=False)
@@ -83,6 +82,7 @@ async def help(ctx):
 
 @client.command(pass_context = True)
 async def leave(ctx):
+
 	# removing player from game
 	for game in games:
 		if ctx.author in games[game].players:
@@ -94,7 +94,6 @@ async def leave(ctx):
 
 @client.command(pass_context = True)
 async def game(ctx, players=2):
-	if ctx.author.bot: return # bot check
 
 	# in game check
 	for game in games:
@@ -117,6 +116,7 @@ async def game(ctx, players=2):
 
 @client.event
 async def on_reaction_add(reaction, user):
+
 	if user.bot: return # bot check
 	if reaction.message.id not in games: return # return if not game
 	if games[reaction.message.id].started: return # return if game already started
@@ -131,15 +131,100 @@ async def on_reaction_add(reaction, user):
 	if len(games[reaction.message.id].players) == games[reaction.message.id].player_count:
 		games[reaction.message.id].started = True
 		await games[reaction.message.id].message.delete()
+
+		# creating game board
 		game_board = await games[reaction.message.id].channel.send(games[reaction.message.id].board_msg())
 		games[reaction.message.id].message = game_board
 		return
 		
-	# editing message
+	# editing embed
 	embed=discord.Embed(title='Game of E', description='Waiting for players... [{0}/{1.player_count}]'.format(len(games[reaction.message.id].players),games[reaction.message.id]), color=0x00ff2a)
 	embed.add_field(name='React to join!', value='✅', inline=False)
 
 	waiting = await games[reaction.message.id].message.edit(embed=embed)
+
+@client.event
+async def on_message(message):
+
+	if message.author.bot: return # bot check
+	msg = message.content.lower()
+
+	# ------------ check if message is a move
+	letters = ['a','b','c','d','e']
+	numbers = ['1','2','3','4','5']
+
+	try:
+		if (len(msg) == 2 and msg[0] in letters and msg[1] in numbers) or (len(msg) == 3 and msg[0] in ['-','|'] and msg[1] in letters and msg[2] in numbers):
+			# check if message is in game channel and is author's turn
+			for game in games:
+				if games[game].channel == message.channel and games[game].turn == message.author:
+					# taking turn
+
+					# ------------ placing
+					if len(msg) == 2:
+						# converting letter,number into tuple
+						coords = (int(numbers[letters.index(msg[0])]),int(msg[1]))
+
+						# check if board spot is taken
+						if games[game].board[coords] == 0:
+							# changing board
+							games[game].board[coords] = games[game].players.index(message.author)+1
+
+						else: break
+
+					# ------------ switching
+					if len(msg) == 3:
+						target_coords = (int(numbers[letters.index(msg[1])]),int(msg[2]))
+						
+						# ------------ horizontal switch
+						if msg[0] == '-':
+							# out of bounds check
+							if target_coords[0] in [1,5]: break
+
+							# target is owned by player
+							if games[game].board[target_coords] != games[game].players.index(message.author)+1: break
+
+							# sides are same check
+							l_coord, r_coord = (target_coords[0]-1, target_coords[1]), (target_coords[0]+1, target_coords[1])
+							if games[game].board[l_coord] != games[game].board[r_coord]: break
+
+							# changing board
+							games[game].board[target_coords] = games[game].board[l_coord] # center
+
+							games[game].board[l_coord] = games[game].players.index(message.author)+1 # left
+							games[game].board[r_coord] = games[game].players.index(message.author)+1 # right
+
+							
+						# ------------ vertical switch
+						elif msg[0] == '|':
+							# out of bounds check
+							if target_coords[1] in [1,5]: break
+
+							# target is owned by player
+							if games[game].board[target_coords] != games[game].players.index(message.author)+1: break
+
+							# sides are same check
+							u_coord, d_coord = (target_coords[0], target_coords[1]-1), (target_coords[0], target_coords[1]+1)
+							if games[game].board[u_coord] != games[game].board[d_coord]: break
+
+							# changing board
+							games[game].board[target_coords] = games[game].board[u_coord] # center
+
+							games[game].board[u_coord] = games[game].players.index(message.author)+1 # up
+							games[game].board[d_coord] = games[game].players.index(message.author)+1 # down
+
+					# ------------ ending turn
+					games[game].turn = games[game].players[games[game].players.index(message.author)-1]
+
+					await games[game].message.edit(content=games[game].board_msg())
+					await message.delete()
+
+					break
+	except IndexError:
+		pass
+
+	# process as command
+	await client.process_commands(message)
 
 
 client.run(token)
