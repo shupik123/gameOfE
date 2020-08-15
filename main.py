@@ -213,6 +213,41 @@ async def on_message(message):
 							games[game].board[u_coord] = games[game].players.index(message.author)+1 # up
 							games[game].board[d_coord] = games[game].players.index(message.author)+1 # down
 
+					# ------------ 3 in a row/column
+
+					# vertical 3
+					def vertical():
+						for y in range(2,5):
+							for x in range(1,6):
+								if games[game].board[(x,y)] != 0 and games[game].board[(x,y-1)] == games[game].board[(x,y)] and games[game].board[(x,y)] == games[game].board[(x,y+1)]:
+									for i in range(1,6):
+										games[game].board[(x,i)] = games[game].board[(x,y)]
+
+					# horizontal 3
+					def horizontal():
+						for x in range(2,5):
+							for y in range(1,6):
+								if games[game].board[(x,y)] != 0 and games[game].board[(x-1,y)] == games[game].board[(x,y)] and games[game].board[(x,y)] == games[game].board[(x+1,y)]:
+									for i in range(1,6):
+										games[game].board[(i,y)] = games[game].board[(x,y)]
+
+					# looping
+					previous = None
+					while previous != games[game].board:
+						previous = dict(games[game].board)
+
+						vertical()
+						horizontal()
+
+					v_h = dict(games[game].board)
+
+					horizontal()
+					vertical()
+
+					if v_h != games[game].board:
+						await message.channel.send('EXECUTE NUKE')
+						
+						
 					# ------------ ending turn
 					games[game].turn = games[game].players[games[game].players.index(message.author)-1]
 
