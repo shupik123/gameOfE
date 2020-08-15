@@ -43,7 +43,7 @@ class Game:
 		spc = '      '
 		lines = []
 
-		lines.append('It\'s {0.turn.name}\'s turn!'.format(self)) # line 0
+		lines.append('It\'s {0.turn.mention}\'s turn!'.format(self)) # line 0
 		lines.append(f':blue_square:{spc}:regional_indicator_a::regional_indicator_b::regional_indicator_c::regional_indicator_d::regional_indicator_e:') # line 1
 		lines.append('') # line 2
 		lines.append(f':one:{spc}') # line 3
@@ -77,6 +77,18 @@ async def help(ctx):
 	embed.add_field(name='!help', value='Sends this message.', inline=False)
 	embed.add_field(name='!game [players, default=2]', value='Starts a game of E.', inline=False)
 	embed.add_field(name='!leave', value='Leaves your current game of E.', inline=False)
+	embed.add_field(name='!rules', value='Explains how to play the game of E.', inline=False)
+
+	await ctx.send(embed=embed)
+
+@client.command(pass_context = True, aliases=['rule', 'how'])
+async def rules(ctx):
+
+	embed=discord.Embed(color=0x62f3ff)
+	embed.add_field(name='Placing', value='Use LetterNumber: `A1`.', inline=False)
+	embed.add_field(name='Switching', value='Use `-` or `|`+LetterNumber: `-A1` or `|A1`.', inline=False)
+	embed.add_field(name='Combo', value='3 in row/column turns whole row/column into yours.', inline=False)
+	embed.add_field(name='Paradox', value='Conflicting 3 in a row/column causes both row and column to be set to E.', inline=False)
 
 	await ctx.send(embed=embed)
 
@@ -92,7 +104,7 @@ async def leave(ctx):
 	# no game to remove from
 	return await ctx.send('You are not currently in a game.')
 
-@client.command(pass_context = True)
+@client.command(pass_context = True, aliases=['play'])
 async def game(ctx, players=2):
 
 	# in game check
@@ -232,22 +244,81 @@ async def on_message(message):
 										games[game].board[(i,y)] = games[game].board[(x,y)]
 
 					# looping
-					previous = None
-					while previous != games[game].board:
-						previous = dict(games[game].board)
+					def combo_loop():
+						previous = None
+						while previous != games[game].board:
+							previous = dict(games[game].board)
 
-						vertical()
-						horizontal()
+							vertical()
+							horizontal()
+
+					combo_loop()
 
 					v_h = dict(games[game].board)
 
 					horizontal()
 					vertical()
 
-					if v_h != games[game].board:
-						await message.channel.send('EXECUTE NUKE')
+					h_v = dict(games[game].board)
+
+					if v_h != h_v:
+						# all equal values are set to 0
+						comparison = {x: v_h[x] - h_v[x] for x in v_h}
+						for key in comparison:
+							# if it isn't 0
+							if comparison[key] != 0:
+								# set row and column to 0
+								for x in range(1,6):
+									games[game].board[(x,key[1])] = 0
+								for y in range(1,6):
+									games[game].board[(key[0],y)] = 0
+								
+								break
+
+					combo_loop()
 						
+
+					# ------------ win condition
+					game_over = True
+					for key in games[game].board:
+						# still e tiles left
+						if games[game].board[key] == 0: game_over = False
+
+					if game_over == True:
+						# tally up tiles
+						tile_count = {
+								1: 0,
+								2: 0,
+								3: 0
+							}
+						for key in games[game].board:
+							tile_count[games[game].board[key]] += 1
 						
+						# determine winner
+						highest = (0, 0)
+						for player in tile_count:
+							# set highest to player
+							if tile_count[player] > highest[1]:
+								highest = (player, tile_count[player])
+							# draw
+							elif tile_count[player] == highest[1]:
+								highest = (-1, -1)
+
+						# draw
+						if highest[0] == -1: winner = 'It\'s a draw!'
+						# winner
+						else: winner = '{0} wins!'.format(games[game].players[highest[0]-1].mention)
+
+						# edit message
+						await games[game].message.edit(content='{0}\n{1}'.format(winner, games[game].board_msg()))
+
+						# end game
+						del games[game]
+						await message.delete()
+
+						break
+
+
 					# ------------ ending turn
 					games[game].turn = games[game].players[games[game].players.index(message.author)-1]
 
